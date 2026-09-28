@@ -201,6 +201,87 @@ jobs:
         run: |
           curl -L -o ./ytmult.deb https://files.catbox.moe/u8c7df.deb
 
+      - name: Patch YTMusicUltimate Korean localization
+        run: |
+          # 이 워크플로는 저장소 소스를 빌드하지 않고 미리 빌드된 deb를 받아 쓰기 때문에
+          # layout/ 안의 ko.lproj가 반영되지 않는다. 받은 deb 안에 직접 넣어준다.
+          KO_STRINGS="${{ github.workspace }}/main/layout/Library/Application Support/YTMusicUltimate.bundle/ko.lproj/Localizable.strings"
+          if [ ! -f "$KO_STRINGS" ]; then
+            echo "  ⏭️  ko.lproj/Localizable.strings 없음 — 한글 패치 건너뜀"
+            exit 0
+          fi
+
+          DEB="${{ github.workspace }}/ytmult.deb"
+          WORKDIR="$(mktemp -d)"
+          cd "$WORKDIR"
+
+          ar x "$DEB"
+          DATA_MEMBER=$(ls data.tar.* | head -1)
+          CONTROL_MEMBER=$(ls control.tar.* | head -1)
+          mkdir data_extracted
+          tar -xf "$DATA_MEMBER" -C data_extracted
+
+          BUNDLE=$(find data_extracted -type d -name 'YTMusicUltimate.bundle' | head -1)
+          if [ -z "$BUNDLE" ]; then
+            echo "::error::deb 안에서 YTMusicUltimate.bundle 폴더를 찾지 못했습니다. deb 내부 구조:"
+            find data_extracted -maxdepth 6 | head -50
+            exit 1
+          fi
+          echo "  🔤 [YTMusicUltimate] 번들 위치: $BUNDLE"
+          mkdir -p "$BUNDLE/ko.lproj"
+          cp "$KO_STRINGS" "$BUNDLE/ko.lproj/Localizable.strings"
+
+          # data.tar를 gzip으로 다시 패키징
+          cd data_extracted
+          tar --numeric-owner --owner=0 --group=0 -cf ../data.tar .
+          cd ..
+          gzip -f -9 data.tar
+
+          # macOS의 ar은 정적 라이브러리(.a)용이라 새 아카이브 생성 시 ranlib이 .deb를 깨뜨린다.
+          # OS ar에 의존하지 않고 Python으로 공용 ar 포맷을 직접 만든다.
+          python3 - "$DEB" "$CONTROL_MEMBER" << 'PYEOF'
+          import sys
+
+          def header(name, size):
+              if len(name) > 16:
+                  raise SystemExit(f"member name too long for ar format: {name}")
+              h = (
+                  name.ljust(16) +
+                  "0".ljust(12) +
+                  "0".ljust(6) +
+                  "0".ljust(6) +
+                  "100644".ljust(8) +
+                  str(size).ljust(10) +
+                  "`\n"
+              )
+              assert len(h) == 60, len(h)
+              return h.encode("ascii")
+
+          out_path = sys.argv[1]
+          members = ["debian-binary", sys.argv[2], "data.tar.gz"]
+          with open(out_path, "wb") as out:
+              out.write(b"!<arch>\n")
+              for name in members:
+                  with open(name, "rb") as f:
+                      data = f.read()
+                  out.write(header(name, len(data)))
+                  out.write(data)
+                  if len(data) % 2 == 1:
+                      out.write(b"\n")
+          print(f"  📦 [YTMusicUltimate] 재패키징 완료: {out_path}")
+          PYEOF
+
+          # 재패키징 결과 검증 (깨진 deb가 cyan까지 넘어가지 않도록)
+          SIZE=$(stat -f%z "$DEB")
+          echo "  📏 재패키징된 deb 크기: $SIZE bytes"
+          if [ "$SIZE" -lt 10000 ]; then
+            echo "::error::재패키징된 deb가 비정상적으로 작습니다 ($SIZE bytes)."
+            exit 1
+          fi
+          cd "${{ github.workspace }}"
+          rm -rf "$WORKDIR"
+          echo "  ✅ [YTMusicUltimate] ko.lproj 삽입 완료"
+
       - name: Determines the Release Title Prefix
         run: |
           if [ "${{ inputs.enable_rymd }}" = "false" ] && \
