@@ -32,9 +32,16 @@ jobs:
         run: brew install ldid
       - name: Run regression tests
         run: |
-          python3 -m unittest discover -s tests/packaging -v
-          xcrun clang -fobjc-arc -fblocks -framework Foundation tests/nowplaying/harness.m -o "$RUNNER_TEMP/nowplaying-check"
-          "$RUNNER_TEMP/nowplaying-check"
+          python3 -m unittest discover -s tests/packaging -v 2>&1 | tee "$RUNNER_TEMP/repair-validation.log"
+          xcrun clang -fobjc-arc -fblocks -framework Foundation tests/nowplaying/harness.m -o "$RUNNER_TEMP/nowplaying-check" 2>&1 | tee -a "$RUNNER_TEMP/repair-validation.log"
+          "$RUNNER_TEMP/nowplaying-check" 2>&1 | tee -a "$RUNNER_TEMP/repair-validation.log"
+      - name: Record failed regression diagnostics in the unpublished draft
+        if: failure()
+        run: |
+          if [ -f "$RUNNER_TEMP/repair-validation.log" ]; then
+            test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+            gh release edit "$RELEASE_TAG" --draft=true --notes-file "$RUNNER_TEMP/repair-validation.log"
+          fi
       - name: Build and package repair
         run: |
           bash scripts/build-repair.sh "$RUNNER_TEMP/YTMUPlaybackRepair.dylib"
