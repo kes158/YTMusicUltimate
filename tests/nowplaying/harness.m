@@ -3,6 +3,7 @@
 
 @interface MPNowPlayingInfoCenter : NSObject
 @property (nonatomic, strong) NSDictionary *nowPlayingInfo;
+@property (nonatomic) NSInteger playbackState;
 + (instancetype)defaultCenter;
 @end
 @implementation MPNowPlayingInfoCenter
@@ -28,19 +29,19 @@ static NSUInteger checks;
 
 int main(void) { @autoreleasepool {
     // Fake an altered runtime NSBundle value: target must come from disk fixture.
-    NPInfo = @{@"CFBundleIdentifier": @"com.google.ios.youtubemusic", @"CFBundleShortVersionString": @"9.44.2"};
+    NPInfo = @{@"CFBundleIdentifier": @"org.example.personal.ytmusic", @"CFBundleShortVersionString": @"9.44.2"};
     [NSUserDefaults.standardUserDefaults removeObjectForKey:NPPreference];
     CHECK(NPEnabled(), "default enabled");
     NPInstall(); NPGetOrigin = origin; NPSetParent = bindTarget;
     MPNowPlayingInfoCenter *center = [MPNowPlayingInfoCenter defaultCenter];
-    CHECK(center != nil && calls == 1, "preserves defaultCenter; binds after creation");
+    CHECK(center != nil && calls == 0, "creating a center does not claim another app’s playback");
     CHECK([lastTarget isEqual:NPBundleID()], "uses installed ID, not a hardcoded other app");
     NSDictionary *info = @{@"title": @"fixture", @"rate": @1, @"elapsed": @12.5};
     center.nowPlayingInfo = info;
     CHECK(center.nowPlayingInfo == info, "preserves exact metadata object");
-    CHECK(NPPublishCount == 1 && calls == 2, "publishes and requests association");
+    CHECK(NPPublishCount == 1 && calls == 1, "publishes and requests association");
     center.nowPlayingInfo = nil;
-    CHECK(center.nowPlayingInfo == nil && calls == 2, "stop/clear does not rebind");
+    CHECK(center.nowPlayingInfo == nil && calls == 1, "stop/clear does not rebind");
     NPSetEnabled(NO);
     CHECK(!NPEnabled() && lastTarget == nil, "disable clears association set by this patch");
     NSUInteger stoppedCalls = calls;
@@ -59,10 +60,15 @@ int main(void) { @autoreleasepool {
     NSUInteger before = NPPublishCount;
     NPInstall(); center.nowPlayingInfo = info;
     CHECK(NPPublishCount == before + 1, "install is idempotent, no recursive wrappers");
-    CHECK([NPSigningAssessment(NPBundleID(), @"TEAM.com.google.ios.youtubemusic") containsString:@"일치함"], "matching signed AppID");
+    CHECK([NPSigningAssessment(NPBundleID(), @"TEAM.org.example.personal.ytmusic") containsString:@"일치함"], "matching signed AppID");
     CHECK([NPSigningAssessment(NPBundleID(), @"TEAM.other.app") containsString:@"불일치"], "mismatched signed AppID");
     CHECK([NPSigningAssessment(NPBundleID(), nil) containsString:@"미확인"], "unreadable entitlement is not called a match");
     CHECK([NPReport() containsString:@"승인이나 탭 동작 성공을 뜻하지"], "request count never claims device success");
+    NSUInteger resumeCalls = calls;
+    center.playbackState = 1;
+    CHECK(center.playbackState == 1 && calls == resumeCalls + 1, "resume rebinds without changing metadata");
+    center.playbackState = 2;
+    CHECK(center.playbackState == 2 && calls == resumeCalls + 1, "pause preserves state without rebinding");
     NPSetParent = throwOnBind;
     center.nowPlayingInfo = info;
     CHECK(center.nowPlayingInfo == info && NPSPIFailed, "SPI exception is isolated from metadata publishing");

@@ -359,6 +359,19 @@ jobs:
         run: |
           cyan -i ytm.ipa -o ${{ env.RELEASE_PREFIX }}_2.4.1_${{ env.YTM_VERSION }}${{ env.WG_SUFFIX }}.ipa -uwf *.deb -n "${{ inputs.display_name }}" -b ${{ inputs.bundle_id }}
 
+      - name: Build and inject widget storage bridge
+        env:
+          BUILT_IPA: ${{ env.RELEASE_PREFIX }}_2.4.1_${{ env.YTM_VERSION }}${{ env.WG_SUFFIX }}.ipa
+        run: |
+          bash main/scripts/build-repair.sh "$RUNNER_TEMP/YTMUPlaybackRepair.dylib" --groups-only
+          python3 main/scripts/patch-repair.py "$BUILT_IPA" "$BUILT_IPA.repaired.ipa" --dylib "$RUNNER_TEMP/YTMUPlaybackRepair.dylib"
+          mv "$BUILT_IPA.repaired.ipa" "$BUILT_IPA"
+
+      - name: Verify widget extensions survived packaging
+        env:
+          BUILT_IPA: ${{ env.RELEASE_PREFIX }}_2.4.1_${{ env.YTM_VERSION }}${{ env.WG_SUFFIX }}.ipa
+        run: python3 main/scripts/check-widgets.py ytm.ipa "$BUILT_IPA"
+
       - name: Determines the Release Tag Prefix
         run: |
           if [ "${{ inputs.enable_rymd }}" = "false" ] && \

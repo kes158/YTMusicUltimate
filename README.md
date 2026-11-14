@@ -147,3 +147,31 @@ found in YTMusic > Account.
      <p>Last.fm Scrobbler for YouTube Music</a> is a tweak to port the <a href="last.fm">Last.fm</a> scrubbler feature on YouTube Music</p>
      <p><a href="https://github.com/ImMALWARE/ios-yt-music-last.fm">Official repository</a> by <a href="https://github.com/ImMALWARE">ImMALWARE</a></p>
    </details>
+### Lock Screen launch identity and Feather
+
+The Now Playing repair uses the installed on-disk bundle ID, like BitChord. Google login still receives its expected original identity, but NSBundle identity spoofing is now limited to calls from the main Google executable; system frameworks and extension bundles receive their own real identity. The repair also requests association when playback resumes without a metadata update. This uses private MediaRemote API and needs device verification; a request counter is not proof of successful launch.
+
+BitChord owns its WidgetKit extension and snapshot writer. This tweak instead relies on the supplied YouTube Music IPA's original widget and shared storage. The release workflow now checks that WidgetKit extensions and their executables survive repackaging and that extension IDs belong to the final host ID. This check does not prove that extension binaries are decrypted or that the final signature grants shared storage.
+
+With Feather, preserve app extensions during import/signing, and check that the final app and widget are signed with profiles granting at least one common App Group. The new storage bridge, loaded by both processes, maps Google's original groups into separate folders inside that common group. It reads the final signatures and leaves already granted original groups alone. Unsupported/DER-only entitlement metadata or no shared group causes it to leave storage unchanged rather than guess. Do not use Spotify's bundle ID or signing identity for YouTube Music; use a distinct ID and matching profile. If the certificate/profile lacks App Groups, a dylib patch cannot grant that capability. A gray widget can therefore remain until the input IPA and final signing are corrected.
+
+Device verification after installing a newly signed build:
+
+1. Play in Spotify, then play a track in YouTube Music. Lock the device and tap Now Playing; repeat after pause/resume and from Dynamic Island.
+2. In the in-app launch diagnostics (available with the WireGuard settings screen), check the installed bundle ID, signed App ID, API availability and association counter.
+3. Add the YouTube Music widget, play several tracks, and verify artwork/data updates and tapping the widget. Repeat after unlocking/restarting the app.
+4. Recheck Google login, since its identity workaround must continue to work.
+
+Automated checks: `python3 -m unittest discover -s tests/packaging -v`; `.github/workflows/nowplaying-check.yml` additionally runs the Objective-C MediaRemote mock harness on macOS. Neither replaces a signed-IPA device test.
+
+### Standalone repair for existing IPAs
+
+`bash scripts/build-repair.sh /tmp/YTMUPlaybackRepair.dylib` builds the Now Playing repair and shared storage bridge on macOS with Xcode and `ldid`. Then run:
+
+```sh
+python3 scripts/patch-repair.py original.ipa repaired.ipa --dylib /tmp/YTMUPlaybackRepair.dylib
+```
+
+The script preserves the input, rejects encrypted executables and missing widgets, injects the same standalone dylib into host and WidgetKit extension, preserves their entitlement dictionaries and ad-hoc signs the changed executables. The output needs full signing in Feather before installation. No signing identities, provisioning profiles or private keys are generated or bundled.
+
+The normal IPA workflow builds Now Playing into the main tweak and injects a groups-only companion to avoid installing the Now Playing hooks twice. `Source/WidgetBridge/` is excluded from the main tweak so host and widget each load exactly one group bridge. Foregrounding the app or obtaining a media center alone does not claim the local media origin; binding requires published playback metadata.

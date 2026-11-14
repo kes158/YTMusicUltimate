@@ -14,7 +14,7 @@ static NSObject *NPLock;
 static void *(*NPGetOrigin)(void);
 static void (*NPSetParent)(void *, CFStringRef);
 static NSUInteger NPPublishCount, NPBindCount;
-static BOOL NPBound, NPInstalled;
+static BOOL NPBound, NPInstalled, NPHasInfo;
 static BOOL NPSPIFailed;
 
 static BOOL NPEnabled(void) {
@@ -25,7 +25,7 @@ static BOOL NPEnabled(void) {
 static NSString *NPBundleID(void) { return NPInfo[@"CFBundleIdentifier"]; }
 
 static void NPBind(void) {
-    if (!NPEnabled() || !NPBundleID().length || !NPGetOrigin || !NPSetParent || NPSPIFailed) return;
+    if (!NPHasInfo || !NPEnabled() || !NPBundleID().length || !NPGetOrigin || !NPSetParent || NPSPIFailed) return;
     // WebKit's MediaRemoteSoftLink.h declares this exact two-argument ABI.
     // The void return means "request sent", never "iOS accepted".
     @try {
@@ -94,15 +94,23 @@ static NSString *NPReport(void) {
 
 static id (*NPOriginalDefaultCenter)(id, SEL);
 static void (*NPOriginalSetInfo)(id, SEL, NSDictionary *);
+static void (*NPOriginalSetPlaybackState)(id, SEL, NSInteger);
+
+static void NPSetPlaybackState(id self, SEL cmd, NSInteger state) {
+    NPOriginalSetPlaybackState(self, cmd, state);
+    // MPNowPlayingPlaybackStatePlaying == 1. Reclaim association when playback
+    // resumes after another media app, even if the metadata did not change.
+    if (state == 1) NPBind();
+}
 
 static id NPDefaultCenter(id self, SEL cmd) {
     id center = NPOriginalDefaultCenter(self, cmd);
-    if (center) NPBind();
     return center;
 }
 
 static void NPSetInfo(id self, SEL cmd, NSDictionary *info) {
     NPOriginalSetInfo(self, cmd, info);
+    NPHasInfo = info.count > 0;
     if (info.count) {
         @synchronized (NPLock) { NPPublishCount++; }
         NPBind();
@@ -161,6 +169,8 @@ static void NPInstall(void) {
         (IMP)NPDefaultCenter, (IMP *)&NPOriginalDefaultCenter);
     NPHook(center, NSSelectorFromString(@"setNowPlayingInfo:"),
         (IMP)NPSetInfo, (IMP *)&NPOriginalSetInfo);
+    NPHook(center, NSSelectorFromString(@"setPlaybackState:"),
+        (IMP)NPSetPlaybackState, (IMP *)&NPOriginalSetPlaybackState);
 #ifndef YTMU_NP_TEST
     // dlopen handle intentionally lives for the process lifetime.
     void *framework = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY | RTLD_LOCAL);

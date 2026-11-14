@@ -13,7 +13,7 @@ include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = YTMusicUltimate
 $(TWEAK_NAME)_FILES = $(filter-out Source/Sideloading.x, $(wildcard Source/*.x))
-$(TWEAK_NAME)_FILES += $(shell find Source -name '*.m' -not -path 'Source/WireGuard/*')
+$(TWEAK_NAME)_FILES += $(shell find Source -name '*.m' -not -path 'Source/WireGuard/*' -not -path 'Source/WidgetBridge/*')
 ADDITIONAL_CFLAGS = -Wno-error -Wno-incomplete-umbrella -Wno-module-import-in-implementation -w
 $(TWEAK_NAME)_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-incomplete-umbrella -Wno-error -w -DTWEAK_VERSION=$(PACKAGE_VERSION)
 $(TWEAK_NAME)_FRAMEWORKS = UIKit Foundation AVFoundation AudioToolbox VideoToolbox MediaPlayer

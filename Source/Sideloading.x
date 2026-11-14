@@ -127,6 +127,23 @@ static NSString *accessGroupID() {
 }
 %end
 
+// Spoof identity only for the host executable's Google login code. Frameworks,
+// MediaRemote and extension bundles must see their real installed identity.
+static BOOL YTMUShouldSpoofBundle(NSBundle *bundle, const void *caller) {
+    if (bundle != NSBundle.mainBundle || !caller) return NO;
+    Dl_info image = {0};
+    if (!dladdr(caller, &image) || !image.dli_fname) return NO;
+    static NSString *hostExecutable;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSString *plist = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Info.plist"];
+        NSDictionary *disk = [NSDictionary dictionaryWithContentsOfFile:plist];
+        NSString *executable = disk[@"CFBundleExecutable"];
+        if (executable.length) hostExecutable = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:executable];
+    });
+    return hostExecutable && [[NSString stringWithUTF8String:image.dli_fname] isEqualToString:hostExecutable];
+}
+
 #pragma mark - Thanks PoomSmart for the following hooks
 /* IAmYouTube + Extra hooks for ytmusic */
 %hook YTVersionUtils
@@ -195,16 +212,12 @@ static NSString *accessGroupID() {
 
 %hook NSBundle
 - (NSString *)bundleIdentifier {
-    NSArray *address = [NSThread callStackReturnAddresses];
-    Dl_info info = {0};
-    if (dladdr((void *)[address[2] longLongValue], &info) == 0)
-        return %orig;
-    NSString *path = [NSString stringWithUTF8String:info.dli_fname];
-    if ([path hasPrefix:NSBundle.mainBundle.bundlePath])
+    if (YTMUShouldSpoofBundle(self, __builtin_return_address(0)))
         return YT_BUNDLE_ID;
     return %orig;
 }
 - (id)objectForInfoDictionaryKey:(NSString *)key {
+    if (!YTMUShouldSpoofBundle(self, __builtin_return_address(0))) return %orig;
     if ([key isEqualToString:@"CFBundleIdentifier"])
         return YT_BUNDLE_ID;
     if ([key isEqualToString:@"CFBundleDisplayName"])
@@ -244,6 +257,7 @@ static NSString *accessGroupID() {
 NSDictionary *(*orig_infoDictionary)(id self, SEL _cmd);
 NSDictionary *replaceInfoDict(id self, SEL _cmd) {
     NSDictionary *originalInfoDictionary = orig_infoDictionary(self, _cmd);
+    if (!YTMUShouldSpoofBundle(self, __builtin_return_address(0))) return originalInfoDictionary;
     NSString *bundleIdentifier = originalInfoDictionary[@"CFBundleIdentifier"];
     if (![bundleIdentifier isEqualToString:YT_BUNDLE_ID]) {
         NSMutableDictionary *newInfoDictionary = [NSMutableDictionary dictionaryWithDictionary:originalInfoDictionary];
