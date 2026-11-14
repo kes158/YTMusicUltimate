@@ -126,37 +126,71 @@ static BOOL NPHook(Class cls, SEL selector, IMP replacement, IMP *original) {
 }
 
 #ifndef YTMU_NP_TEST
-@interface YTMUNPDiagnosticAction : NSObject
-@property (nonatomic, weak) UIViewController *controller;
-- (void)show;
-@end
-@implementation YTMUNPDiagnosticAction
-- (void)show {
-    UIViewController *controller = self.controller;
+static void NPShowDiagnostics(UIViewController *controller, UITableView *tableView) {
     if (!controller || controller.presentedViewController) return;
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"재생 위젯 → 앱 열기"
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Now Playing 앱 열기 진단"
         message:NPReport() preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"진단 복사" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
         UIPasteboard.generalPasteboard.string = NPReport();
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:NPEnabled() ? @"패치 끄기" : @"패치 켜기"
-        style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) { NPSetEnabled(!NPEnabled()); }]];
+        style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            NPSetEnabled(!NPEnabled());
+            [tableView reloadData];
+        }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"닫기" style:UIAlertActionStyleCancel handler:nil]];
     [controller presentViewController:alert animated:YES completion:nil];
 }
-@end
 
-static const char NPActionKey;
-static void (*NPOriginalSettingsLoad)(id, SEL);
-static void NPSettingsLoad(UIViewController *self, SEL cmd) {
-    NPOriginalSettingsLoad(self, cmd);
-    YTMUNPDiagnosticAction *action = [YTMUNPDiagnosticAction new];
-    action.controller = self;
-    objc_setAssociatedObject(self, &NPActionKey, action, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    NSMutableArray *items = [self.navigationItem.rightBarButtonItems mutableCopy] ?: [NSMutableArray new];
-    [items addObject:[[UIBarButtonItem alloc] initWithTitle:@"앱 열기 진단"
-        style:UIBarButtonItemStylePlain target:action action:@selector(show)]];
-    self.navigationItem.rightBarButtonItems = items;
+// Append to the main settings section, immediately after its optional WireGuard
+// row. The row also remains available in builds without the proxy feature.
+// Runtime hooks support existing IPAs as well as full source builds.
+static NSInteger (*NPSettingsOriginalRows)(id, SEL, UITableView *, NSInteger);
+static UITableViewCell *(*NPSettingsOriginalCell)(id, SEL, UITableView *, NSIndexPath *);
+static void (*NPSettingsOriginalSelect)(id, SEL, UITableView *, NSIndexPath *);
+
+static NSInteger NPSettingsRows(id self, SEL cmd, UITableView *table, NSInteger section) {
+    NSInteger count = NPSettingsOriginalRows(self, cmd, table, section);
+    return section == 1 ? count + 1 : count;
+}
+
+static BOOL NPIsSettingsRow(id self, UITableView *table, NSIndexPath *path) {
+    return path.section == 1 && path.row == NPSettingsOriginalRows(self,
+        @selector(tableView:numberOfRowsInSection:), table, 1);
+}
+
+static UITableViewCell *NPSettingsCell(id self, SEL cmd, UITableView *table, NSIndexPath *path) {
+    if (!NPIsSettingsRow(self, table, path)) return NPSettingsOriginalCell(self, cmd, table, path);
+    UITableViewCell *cell = [table dequeueReusableCellWithIdentifier:@"YTMUNowPlayingDiagnostics"];
+    if (!cell) cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
+        reuseIdentifier:@"YTMUNowPlayingDiagnostics"];
+    cell.textLabel.text = @"Now Playing 앱 열기 진단";
+    cell.detailTextLabel.text = NPEnabled() ? @"켜짐 · 잠금화면 앱 연결 상태 확인" : @"꺼짐 · 잠금화면 앱 연결 상태 확인";
+    cell.detailTextLabel.numberOfLines = 0;
+    cell.imageView.image = [UIImage systemImageNamed:@"play.rectangle"];
+    cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+    return cell;
+}
+
+static void NPSettingsSelect(UIViewController *self, SEL cmd, UITableView *table, NSIndexPath *path) {
+    if (!NPIsSettingsRow(self, table, path)) {
+        NPSettingsOriginalSelect(self, cmd, table, path);
+        return;
+    }
+    [table deselectRowAtIndexPath:path animated:YES];
+    NPShowDiagnostics(self, table);
+}
+
+static void NPInstallSettings(void) {
+    Class settings = NSClassFromString(@"YTMUltimateSettingsController");
+    SEL rows = @selector(tableView:numberOfRowsInSection:);
+    SEL cell = @selector(tableView:cellForRowAtIndexPath:);
+    SEL select = @selector(tableView:didSelectRowAtIndexPath:);
+    if (!class_getInstanceMethod(settings, rows) || !class_getInstanceMethod(settings, cell) ||
+        !class_getInstanceMethod(settings, select)) return;
+    NPHook(settings, rows, (IMP)NPSettingsRows, (IMP *)&NPSettingsOriginalRows);
+    NPHook(settings, cell, (IMP)NPSettingsCell, (IMP *)&NPSettingsOriginalCell);
+    NPHook(settings, select, (IMP)NPSettingsSelect, (IMP *)&NPSettingsOriginalSelect);
 }
 #endif
 
@@ -178,8 +212,7 @@ static void NPInstall(void) {
         NPGetOrigin = dlsym(framework, "MRMediaRemoteGetLocalOrigin");
         NPSetParent = dlsym(framework, "MRMediaRemoteSetParentApplication");
     }
-    Class settings = NSClassFromString(@"YTMUWGSettingsController");
-    NPHook(settings, @selector(viewDidLoad), (IMP)NPSettingsLoad, (IMP *)&NPOriginalSettingsLoad);
+    NPInstallSettings();
     [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification
         object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) { NPBind(); }];
 #endif

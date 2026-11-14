@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [MYmain]
-    paths: [.github/workflows/repair-ipa-download.yml, tests/nowplaying/harness.m]
+    paths: [.github/workflows/repair-ipa-download.yml, tests/nowplaying/harness.m, Source/NowPlaying/YTMUNowPlayingFix.m]
 permissions:
   contents: write
 concurrency:
@@ -62,6 +62,8 @@ jobs:
           text = f'''YouTube Music 9.44.2 잠금화면·홈 위젯 수정 검증용 IPA입니다.
 
           제공된 원본과 SHA-256이 동일한 저장소의 기존 IPA를 사용해 GitHub Actions에서 다시 빌드했습니다. 잠금화면 연결 패치와 앱·위젯 양쪽의 App Group 브리지가 포함됩니다.
+
+          Now Playing 앱 열기 진단은 YTMusicUltimate 설정의 앱 내부 WireGuard / Proxy 바로 아래 별도 항목으로 이동했습니다. 프록시 화면에 들어가지 않고 상태 확인·켜기/끄기·진단 복사를 사용할 수 있습니다.
 
           Feather에서 앱·위젯 확장·dylib 전체를 재서명해 설치하세요. 위젯 확장을 유지하고 앱과 위젯에 공통 App Group을 허용하는 프로파일이 필요합니다.
 

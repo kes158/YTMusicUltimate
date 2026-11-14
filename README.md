@@ -158,7 +158,7 @@ With Feather, preserve app extensions during import/signing, and check that the 
 Device verification after installing a newly signed build:
 
 1. Play in Spotify, then play a track in YouTube Music. Lock the device and tap Now Playing; repeat after pause/resume and from Dynamic Island.
-2. In the in-app launch diagnostics (available with the WireGuard settings screen), check the installed bundle ID, signed App ID, API availability and association counter.
+2. In YTMusicUltimate settings, open the separate Now Playing launch diagnostics row below the optional WireGuard / Proxy row to check the installed bundle ID, signed App ID, API availability and association counter.
 3. Add the YouTube Music widget, play several tracks, and verify artwork/data updates and tapping the widget. Repeat after unlocking/restarting the app.
 4. Recheck Google login, since its identity workaround must continue to work.
 
