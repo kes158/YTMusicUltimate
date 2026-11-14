@@ -35,11 +35,11 @@ int main(void) { @autoreleasepool {
     NPInstall(); NPGetOrigin = origin; NPSetParent = bindTarget;
     MPNowPlayingInfoCenter *center = [MPNowPlayingInfoCenter defaultCenter];
     CHECK(center != nil && calls == 0, "creating a center does not claim another app’s playback");
-    CHECK([lastTarget isEqual:NPBundleID()], "uses installed ID, not a hardcoded other app");
     NSDictionary *info = @{@"title": @"fixture", @"rate": @1, @"elapsed": @12.5};
     center.nowPlayingInfo = info;
     CHECK(center.nowPlayingInfo == info, "preserves exact metadata object");
     CHECK(NPPublishCount == 1 && calls == 1, "publishes and requests association");
+    CHECK([lastTarget isEqual:NPBundleID()], "uses installed ID, not a hardcoded other app");
     center.nowPlayingInfo = nil;
     CHECK(center.nowPlayingInfo == nil && calls == 1, "stop/clear does not rebind");
     NPSetEnabled(NO);

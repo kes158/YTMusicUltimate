@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [MYmain]
-    paths: [.github/workflows/repair-ipa-download.yml]
+    paths: [.github/workflows/repair-ipa-download.yml, tests/nowplaying/harness.m]
 permissions:
   contents: write
 concurrency:
