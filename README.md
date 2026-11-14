@@ -149,7 +149,7 @@ found in YTMusic > Account.
    </details>
 ### Lock Screen launch identity and Feather
 
-The Now Playing repair uses the installed on-disk bundle ID, like BitChord. Google login still receives its expected original identity, but NSBundle identity spoofing is now limited to calls from the main Google executable; system frameworks and extension bundles receive their own real identity. The repair also requests association when playback resumes without a metadata update. This uses private MediaRemote API and needs device verification; a request counter is not proof of successful launch.
+The Now Playing repair uses the installed on-disk bundle ID, like BitChord. Google login still receives its expected original identity, but NSBundle identity spoofing is now limited to calls from the main Google executable; system frameworks and extension bundles receive their own real identity. The repair also requests association when playback resumes without a metadata update. It applies automatically with no diagnostic row, alert or on/off setting; an old disabled preference no longer suppresses it. It uses private MediaRemote API; successful API invocation alone does not verify launch behavior on a device.
 
 BitChord owns its WidgetKit extension and snapshot writer. This tweak instead relies on the supplied YouTube Music IPA's original widget and shared storage. The release workflow now checks that WidgetKit extensions and their executables survive repackaging and that extension IDs belong to the final host ID. This check does not prove that extension binaries are decrypted or that the final signature grants shared storage.
 
@@ -158,9 +158,8 @@ With Feather, preserve app extensions during import/signing, and check that the 
 Device verification after installing a newly signed build:
 
 1. Play in Spotify, then play a track in YouTube Music. Lock the device and tap Now Playing; repeat after pause/resume and from Dynamic Island.
-2. In YTMusicUltimate settings, open the separate Now Playing launch diagnostics row below the optional WireGuard / Proxy row to check the installed bundle ID, signed App ID, API availability and association counter.
-3. Add the YouTube Music widget, play several tracks, and verify artwork/data updates and tapping the widget. Repeat after unlocking/restarting the app.
-4. Recheck Google login, since its identity workaround must continue to work.
+2. Add the YouTube Music widget, play several tracks, and verify artwork/data updates and tapping the widget. Repeat after unlocking/restarting the app.
+3. Recheck Google login, since its identity workaround must continue to work.
 
 Automated checks: `python3 -m unittest discover -s tests/packaging -v`; `.github/workflows/nowplaying-check.yml` additionally runs the Objective-C MediaRemote mock harness on macOS. Neither replaces a signed-IPA device test.
 
